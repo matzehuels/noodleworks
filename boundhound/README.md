@@ -1,0 +1,1 @@
+# 🐶 📈 BoundHound: A minimal branch-and-bound optimization solver

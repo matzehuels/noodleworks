@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tinytorch"
+version = "0.1.0"
+description = "A minimal PyTorch-like deep learning framework"
+requires-python = ">=3.11"
+
+[tool.setuptools]
+packages = ["tinytorch"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+fix = true
+extend-exclude = [".git", ".mypy_cache", ".pytest_cache", ".venv", "build", "dist", "site-packages"]
+select = ["E", "F", "I", "A"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+
+
+[tool.pytest.ini_options]
+addopts = "--cov=. --cov-report=term-missing --cov-branch"
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+[tool.coverage.run]
+omit = ["tests/*"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_optional = true
