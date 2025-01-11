@@ -12,6 +12,9 @@ __pycache__/
 # ruff
 .ruff_cache
 
+# max
+.DS_Store
+
 # vscode
 .vscode/
 

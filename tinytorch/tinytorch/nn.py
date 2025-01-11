@@ -36,7 +36,7 @@ class Module(ABC):
     def flush_grads(self) -> None:
         """Resets gradients to zero for all trainable parameters."""
         for p in self.parameters:
-            p.grad = 0
+            p.grad = np.zeros_like(p.data, dtype=np.float32)
 
 
 class Neuron(Module):

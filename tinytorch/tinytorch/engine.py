@@ -12,10 +12,14 @@ from enum import Enum
 from typing import List, Optional, Tuple, Union
 
 import numpy as np
+from numpy.typing import NDArray
 
 from tinytorch.visualization import plot_graph
 
-ArrayLike = Union[np.ndarray, List[float | int], float, int]
+# Define float32 array type for clarity
+Float32Array = NDArray[np.float32]
+
+ArrayLike = Union[Float32Array, List[float | int], float, int]
 TensorLike = Union[ArrayLike, "Tensor"]
 AxisType = int | Tuple[int, ...]
 
@@ -36,7 +40,7 @@ class Operation(Enum):
     LOG = "log"
 
 
-def _cast_array(data: ArrayLike) -> np.ndarray:
+def _cast_array(data: ArrayLike) -> Float32Array:
     """Cast tensor-like object to numpy array with float32 dtype."""
     if isinstance(data, list):
         array = np.array(data, dtype=np.float32)
@@ -58,7 +62,7 @@ def _cast_tensor(x: TensorLike) -> Tensor:
     return out
 
 
-def _sum_to_shape(x: np.ndarray, shape: Tuple[int, ...]) -> np.ndarray:
+def _sum_to_shape(x: Float32Array, shape: Tuple[int, ...]) -> Float32Array:
     """
     Sum array so that it matches 'shape', effectively reversing any broadcasting that expanded 'x' to a bigger shape.
 
@@ -91,8 +95,8 @@ class Tensor(object):
         _op: Optional[Operation] = None,
     ) -> None:
         """Initialize a new Tensor with data and optional children and operation."""
-        self.data = _cast_array(data)
-        self.grad = np.zeros_like(data, dtype=np.float32)
+        self.data: Float32Array = _cast_array(data)
+        self.grad: Float32Array = np.zeros_like(data, dtype=np.float32)
         self.label = label
         self._op = _op
         self._children = set(_children) if _children is not None else set()
@@ -125,7 +129,7 @@ class Tensor(object):
             raise TypeError("len() of a 0-d tensor")
         return self.data.shape[0]
 
-    def _broadcast_backward(self, grad_term: np.ndarray) -> None:
+    def _broadcast_backward(self, grad_term: Float32Array) -> None:
         """Handle gradient accumulation for broadcasted operations."""
         if self.data.shape == ():  # Scalar special-case
             self.grad += grad_term.sum()

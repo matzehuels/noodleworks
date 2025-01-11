@@ -8,7 +8,7 @@ from hypothesis import settings
 from hypothesis import strategies as st
 from hypothesis.extra.numpy import arrays
 
-from tinytorch.engine import Tensor
+from tinytorch.engine import Float32Array, Tensor
 
 # Tolerances
 RTOL = 1e-5  # relative tolerance for float32
@@ -38,14 +38,12 @@ def arrays_strategy(
     max_size: int = 5,
     shape: Optional[Tuple[int, ...]] = None,
     floats_strategy=default_floats_strategy,
-) -> st.SearchStrategy:
+) -> st.SearchStrategy[Float32Array]:
     """Strategy to generate numpy arrays."""
     shape_strategy = (
         shape
         if shape is not None
-        else st.lists(
-            st.integers(min_value=1, max_value=max_size), min_size=1, max_size=max_dims
-        )
+        else st.lists(st.integers(min_value=1, max_value=max_size), min_size=1, max_size=max_dims)
     )
     return arrays(dtype=np.float32, shape=shape_strategy, elements=floats_strategy)  # type: ignore
 
@@ -55,14 +53,14 @@ def tensors_strategy(
     max_size: int = 5,
     shape: Optional[Tuple[int, ...]] = None,
     floats_strategy=default_floats_strategy,
-) -> st.SearchStrategy:
+) -> st.SearchStrategy[Tensor]:
     """Generates Tensor instances with random numpy arrays."""
     return arrays_strategy(max_dims, max_size, shape, floats_strategy).map(Tensor)
 
 
 def same_shape_tensors_strategy(
     max_dims: int = 4, max_size: int = 5, floats_strategy=default_floats_strategy
-) -> st.SearchStrategy:
+) -> st.SearchStrategy[Tuple[Tensor, Tensor]]:
     """Strategy to generate two tensors with the same shape."""
 
     @st.composite
@@ -86,7 +84,7 @@ def torch_tensor_strategy(
     max_size: int = 5,
     shape: Optional[Tuple[int, ...]] = None,
     floats_strategy=default_floats_strategy,
-) -> st.SearchStrategy:
-    """Strategy to generate JAX arrays."""
+) -> st.SearchStrategy[torch.Tensor]:
+    """Strategy to generate PyTorch tensors."""
     array_strat = arrays_strategy(max_dims, max_size, shape, floats_strategy)
     return array_strat.map(torch.Tensor)
