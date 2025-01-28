@@ -3,11 +3,10 @@
 from abc import ABC, abstractmethod
 from enum import Enum
 from functools import reduce
-from typing import Optional, Tuple
 
 import numpy as np
 
-from tinytorch.engine import List, Tensor, TensorLike
+from tinytorch.engine import Tensor, TensorLike
 
 
 class Activation(Enum):
@@ -29,7 +28,7 @@ class Module(ABC):
 
     @property
     @abstractmethod
-    def parameters(self) -> List[Tensor]:
+    def parameters(self) -> list[Tensor]:
         """Returns list of trainable parameters. Must be implemented by subclasses."""
         raise NotImplementedError
 
@@ -46,7 +45,7 @@ class Neuron(Module):
         self,
         n_input: int,
         activation: Activation,
-        label: Optional[str] = None,
+        label: str | None = None,
     ) -> None:
         """Initialize neuron with Xavier/Glorot initialization.
 
@@ -74,11 +73,11 @@ class Neuron(Module):
 
         # Xavier/Glorot initialization
         scale = np.sqrt(2.0 / (n_input + 1))  # +1 for the output
-        self.w = Tensor(np.random.normal(0, scale, size=(1, n_input)), label="w")
-        self.b = Tensor(np.zeros((1,)), label="b")  # Initialize bias to zero
+        self.w = Tensor(np.random.normal(0, scale, size=(1, n_input)).astype(np.float32), label="w")
+        self.b = Tensor(np.zeros((1,), dtype=np.float32), label="b")  # Initialize bias to zero
 
     @property
-    def parameters(self) -> List[Tensor]:
+    def parameters(self) -> list[Tensor]:
         """Access all tunable parameters."""
         return [self.w, self.b]
 
@@ -106,7 +105,8 @@ class Neuron(Module):
         z = (self.w * x).sum(axis=1)
         a = z + self.b  # Add bias (broadcasting automatically)
         act_function = getattr(a, self.activation.value)
-        return act_function()
+        result = act_function()
+        return result if isinstance(result, Tensor) else Tensor(result)
 
     def __repr__(self) -> str:
         """Return detailed string representation of the neuron."""
@@ -131,7 +131,7 @@ class Layer(Module):
         n_input: int,
         n_neurons: int = 1,
         activation: Activation = Activation.RELU,
-        label: Optional[str] = None,
+        label: str | None = None,
     ) -> None:
         """Initialize layer of neurons.
 
@@ -192,7 +192,7 @@ class Layer(Module):
         return Tensor.stack(neuron_outputs, axis=1)
 
     @property
-    def parameters(self) -> List[Tensor]:
+    def parameters(self) -> list[Tensor]:
         """Returns list of trainable parameters from all neurons."""
         return [p for neuron in self.neurons for p in neuron.parameters]
 
@@ -203,8 +203,8 @@ class MLP(Module):
     def __init__(
         self,
         n_input: int,
-        layers: List[Tuple[int, Activation]],
-        label: Optional[str] = None,
+        layers: list[tuple[int, Activation]],
+        label: str | None = None,
     ) -> None:
         """Initialize MLP.
 
@@ -230,7 +230,8 @@ class MLP(Module):
 
     def __call__(self, x: TensorLike) -> Tensor:
         """Forward pass through MLP using function composition."""
-        return reduce(lambda xi, layer: layer(xi), self.layers, x)
+        result = reduce(lambda xi, layer: layer(xi), self.layers, x)
+        return result if isinstance(result, Tensor) else Tensor(result)
 
     def __repr__(self) -> str:
         """Return detailed string representation of the MLP."""
@@ -256,6 +257,6 @@ class MLP(Module):
         return f"MLP({self.layers[0].n_input} -> [{layers_str}])"
 
     @property
-    def parameters(self) -> List[Tensor]:
+    def parameters(self) -> list[Tensor]:
         """Returns list of trainable parameters from all layers."""
         return [p for layer in self.layers for p in layer.parameters]

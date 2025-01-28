@@ -1,12 +1,14 @@
 """Module for graph visualizations and other plots."""
 
-from typing import TYPE_CHECKING, Dict
+from typing import TYPE_CHECKING
 
 import numpy as np
-from graphviz import Digraph  # type: ignore[import]
+from graphviz import Digraph
 
 if TYPE_CHECKING:
     from tinytorch.engine import Tensor
+
+MAX_ELEMENTS = 3
 
 
 def format_array(arr: np.ndarray) -> str:
@@ -16,7 +18,7 @@ def format_array(arr: np.ndarray) -> str:
         return f"{float(arr):.3f}"
 
     # For small arrays (<=3 elements), show all values
-    if arr.size <= 3:
+    if arr.size <= MAX_ELEMENTS:
         return np.array2string(
             arr,
             precision=3,
@@ -33,7 +35,7 @@ def plot_graph(t: "Tensor", output_format: str = "png") -> None:
     """Plot computational graph for a tensor using graphviz."""
     dot = Digraph(t.label or "Tensor", format=output_format)
     dot.attr(rankdir="LR")  # Left to right direction
-    visited: Dict["Tensor", str] = {}
+    visited: dict[Tensor, str] = {}
 
     def _trace(tensor: "Tensor") -> str:
         if tensor in visited:

@@ -9,7 +9,7 @@ functions. The implementation leverages numpy for efficient numerical operations
 from __future__ import annotations
 
 from enum import Enum
-from typing import List, Optional, Tuple, Union
+from typing import Union
 
 import numpy as np
 from numpy.typing import NDArray
@@ -19,9 +19,9 @@ from tinytorch.visualization import plot_graph
 # Define float32 array type for clarity
 Float32Array = NDArray[np.float32]
 
-ArrayLike = Union[Float32Array, List[float | int], float, int]
+ArrayLike = Union[Float32Array, list[float | int], float, int]
 TensorLike = Union[ArrayLike, "Tensor"]
-AxisType = int | Tuple[int, ...]
+AxisType = int | tuple[int, ...]
 
 
 class Operation(Enum):
@@ -62,11 +62,11 @@ def _cast_tensor(x: TensorLike) -> Tensor:
     return out
 
 
-def _sum_to_shape(x: Float32Array, shape: Tuple[int, ...]) -> Float32Array:
+def _sum_to_shape(x: Float32Array, shape: tuple[int, ...]) -> Float32Array:
     """
-    Sum array so that it matches 'shape', effectively reversing any broadcasting that expanded 'x' to a bigger shape.
-
-    This version expands on the right (axis=-1), which matches how numpy broadcasting works.
+    Sum array so that it matches 'shape', effectively reversing any broadcasting that expanded 'x'
+    to a bigger shape. This version expands on the right (axis=-1), which matches how numpy
+    broadcasting works.
     """
     # Case 1: If x has fewer dims, add trailing (rightmost) dims until ranks match.
     while x.ndim < len(shape):
@@ -84,15 +84,15 @@ def _sum_to_shape(x: Float32Array, shape: Tuple[int, ...]) -> Float32Array:
     return x
 
 
-class Tensor(object):
+class Tensor:
     """Core tensor implementation."""
 
     def __init__(
         self,
         data: ArrayLike,
-        label: Optional[str] = None,
-        _children: Optional[Tuple[Tensor, ...]] = None,
-        _op: Optional[Operation] = None,
+        label: str | None = None,
+        _children: tuple[Tensor, ...] | None = None,
+        _op: Operation | None = None,
     ) -> None:
         """Initialize a new Tensor with data and optional children and operation."""
         self.data: Float32Array = _cast_array(data)
@@ -119,7 +119,7 @@ class Tensor(object):
         plot_graph(self, output_format)
 
     @property
-    def shape(self) -> Tuple[int, ...]:
+    def shape(self) -> tuple[int, ...]:
         """Return the shape of the tensor's data."""
         return self.data.shape
 
@@ -138,12 +138,12 @@ class Tensor(object):
             self.grad += grad_term
 
     @staticmethod
-    def stack(tensors: List[Tensor], axis: int = 0) -> Tensor:
+    def stack(tensors: list[Tensor], axis: int = 0) -> Tensor:
         """Stack arrays along specified axis and new tensor with stacked data"""
         stacked = np.stack([t.data for t in tensors], axis=axis)
         out = Tensor(stacked, None, tuple(tensors), Operation.STACK)
 
-        def _backward():
+        def _backward() -> None:
             """Split gradient along stacking axis and distribute to inputs."""
             grads = np.split(out.grad, len(tensors), axis=axis)
             for tensor, grad in zip(tensors, grads):
@@ -165,7 +165,7 @@ class Tensor(object):
         other = _cast_tensor(other)
         out = Tensor(self.data + other.data, None, (self, other), Operation.ADD)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is 1 for both inputs (gradients accumulate here)."""
             self._broadcast_backward(out.grad)
             other._broadcast_backward(out.grad)
@@ -189,7 +189,7 @@ class Tensor(object):
         other = _cast_tensor(other)
         out = Tensor(self.data * other.data, None, (self, other), Operation.MULT)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivatives are the opposite operand (gradients accumulate here)."""
             self._broadcast_backward(other.data * out.grad)
             other._broadcast_backward(self.data * out.grad)
@@ -211,7 +211,7 @@ class Tensor(object):
         """
         out = Tensor(-self.data, None, (self,), Operation.MULT)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is -1."""
             self.grad += -1 * out.grad  # dL/dx = dL/dz * dz/dx = dL/dz * (-1)
 
@@ -229,7 +229,7 @@ class Tensor(object):
         other = _cast_tensor(other)
         out = Tensor(self.data - other.data, None, (self, other), Operation.ADD)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivatives are 1 and -1."""
             self._broadcast_backward(out.grad)
             other._broadcast_backward(-out.grad)
@@ -251,7 +251,7 @@ class Tensor(object):
         """
         out = Tensor(np.power(self.data, exponent), None, (self,), Operation.POW)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is n * x^(n-1)."""
             self._broadcast_backward((exponent * np.power(self.data, exponent - 1)) * out.grad)
 
@@ -264,7 +264,7 @@ class Tensor(object):
         out = self * (other**-1)
         return out
 
-    def __rtruediv__(self, other: TensorLike) -> "Tensor":
+    def __rtruediv__(self, other: TensorLike) -> Tensor:
         """Handle division when tensor is the denominator (other / self)."""
         other = _cast_tensor(other)
         return other / self
@@ -280,7 +280,7 @@ class Tensor(object):
         other = _cast_tensor(other)
         out = Tensor(np.matmul(self.data, other.data), None, (self, other), Operation.MATMUL)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivatives using matrix multiplication rules."""
             self._broadcast_backward(np.matmul(out.grad, other.data.T))
             other._broadcast_backward(np.matmul(self.data.T, out.grad))
@@ -302,7 +302,7 @@ class Tensor(object):
         """
         out = Tensor(np.exp(self.data), None, (self,), Operation.EXP)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is e^x (the output itself)."""
             self._broadcast_backward(out.data * out.grad)
 
@@ -320,12 +320,11 @@ class Tensor(object):
         other = _cast_tensor(other)
         out = Tensor(np.minimum(self.data, other.data), None, (self, other), Operation.MIN)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is 1 for the smaller input, 0.5 for equal inputs, 0 for larger."""
             equal = (self.data == other.data).astype(np.float32)
             less = (self.data < other.data).astype(np.float32)
             greater = (self.data > other.data).astype(np.float32)
-
             self._broadcast_backward(out.grad * (less + 0.5 * equal))
             other._broadcast_backward(out.grad * (greater + 0.5 * equal))
 
@@ -343,7 +342,7 @@ class Tensor(object):
         other = _cast_tensor(other)
         out = Tensor(np.maximum(self.data, other.data), None, (self, other), Operation.MAX)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is 1 for the larger input, 0.5 for equal inputs, 0 for smaller."""
             equal = (self.data == other.data).astype(np.float32)
             greater = (self.data > other.data).astype(np.float32)
@@ -363,7 +362,7 @@ class Tensor(object):
         """
         out = Tensor(self.data, None, (self,), Operation.IDENT)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is 1."""
             self._broadcast_backward(out.grad)
 
@@ -371,7 +370,8 @@ class Tensor(object):
         return out
 
     def tanh(self) -> Tensor:
-        """Compute hyperbolic tangent of tensor. For large values, we clip the input to avoid overflow in float32.
+        """Compute hyperbolic tangent of tensor. For large values, we clip the input to avoid
+        overflow in float32.
 
         Uses a numerically stable implementation:
             tanh(x) = (e^x - e^-x) / (e^x + e^-x)
@@ -400,14 +400,14 @@ class Tensor(object):
         zero = _cast_tensor(0.0)
         out = self.max(zero)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is 1 where input was positive, 0 elsewhere."""
             self._broadcast_backward(out.grad * (self.data > 0).astype(np.float32))
 
         out._backward = _backward
         return out
 
-    def sum(self, axis: Optional[AxisType] = None) -> Tensor:
+    def sum(self, axis: AxisType | None = None) -> Tensor:
         """Sum tensor over specified axes.
 
         Forward pass: z = sum(x, axis)
@@ -422,7 +422,7 @@ class Tensor(object):
 
         out = Tensor(np.sum(self.data, axis=axis), None, (self,), Operation.SUM)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is 1, broadcasted to match input shape."""
             self._broadcast_backward(out.grad)
 
@@ -438,7 +438,7 @@ class Tensor(object):
         """
         out = Tensor(np.log(self.data), None, (self,), Operation.LOG)
 
-        def _backward():
+        def _backward() -> None:
             """Local derivative is 1/x."""
             self._broadcast_backward(out.grad / self.data)
 
@@ -452,7 +452,7 @@ class Tensor(object):
         starting from this tensor. Then iterates through the nodes in reverse
         order, calling _backward() on each to accumulate gradients.
         """
-        topo: List[Tensor] = []
+        topo: list[Tensor] = []
         visited = set()
 
         def _build_topo(v: Tensor) -> None:
