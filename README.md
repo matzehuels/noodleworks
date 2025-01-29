@@ -9,4 +9,4 @@ For noodling on ideas and foundational experimentation. A playful collection of 
 
 ## License
 
-All project are licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+All projects in this repository are licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
