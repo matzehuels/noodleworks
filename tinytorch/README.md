@@ -73,16 +73,6 @@ df/dx = df/dg * dg/dx
 
 This simple example demonstrates how complex derivatives can be computed by combining simpler ones. TinyTorch extends this concept to handle multivariate functions and complex computational graphs automatically.
 
-## Table of Contents 📚
-
-1. [Core Concepts](#core-concepts)
-2. [Implementation Deep Dive](#implementation-deep-dive)
-3. [Neural Network Components](#neural-network-components)
-4. [Training Examples](#training-examples)
-5. [API Reference](#api-reference)
-6. [Contributing](#contributing)
-7. [License](#license)
-
 ## Implementation Deep Dive 🔍
 
 ### 1. Computational Graphs and Automatic Differentiation
