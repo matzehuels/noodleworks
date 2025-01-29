@@ -82,7 +82,7 @@ The backward pass ([backpropagation](https://en.wikipedia.org/wiki/Backpropagati
 The [chain rule](https://en.wikipedia.org/wiki/Chain_rule) is the key to automatic differentiation. Each operation knows how to compute its local derivatives, and TinyTorch combines these to compute full gradients. For example, in multiplication `z = x * y`:
 ```python
 # Forward: z = x * y
-# Backward: 
+# Backward:
 # dz/dx = y  (partial derivative with respect to x)
 # dz/dy = x  (partial derivative with respect to y)
 ```
@@ -102,9 +102,9 @@ For example, a bias vector `(n,)` broadcast with a matrix `(m,n)` expands that v
 
 We solve this with a small helper often called `sum_to_shape`. It systematically collapses any broadcasted dimensions by:
 
-1. **Right-aligning** shapes (matching numpy’s trailing-dimension broadcasting).  
-2. **Expanding** if the gradient has fewer dimensions than needed.  
-3. **Summing out** dimensions if the gradient has more dimensions than needed.  
+1. **Right-aligning** shapes (matching numpy’s trailing-dimension broadcasting).
+2. **Expanding** if the gradient has fewer dimensions than needed.
+3. **Summing out** dimensions if the gradient has more dimensions than needed.
 4. **Summing** within each axis where the original tensor had size 1.
 
 This ensures that any gradient is accurately *folded* back into the original tensor’s shape, preserving correct gradient accumulation for both scalars and multi-dimensional tensors alike.
@@ -129,14 +129,14 @@ During backpropagation, TinyTorch performs a [topological sort](https://en.wikip
 def backward(self):
     topo = []
     visited = set()
-    
+
     def _build_topo(v):
         if v not in visited:
             visited.add(v)
             for child in v._children:
                 _build_topo(child)
             topo.append(v)
-    
+
     _build_topo(self)
     self.grad = ones_like(self.data)
     for tensor in reversed(topo):
@@ -338,19 +338,19 @@ The training process implements maximum likelihood estimation through gradient d
 for epoch in range(epochs):
     # Forward pass
     y_train_probs = mlp(X_train)
-    
+
     # Zero gradients before backward pass
     mlp.flush_grads()
-    
+
     # Binary cross-entropy loss (negative log likelihood)
     neg_logl_train = -(
-        y_train * y_train_probs.log() + 
+        y_train * y_train_probs.log() +
         (1 - y_train) * (1 - y_train_probs).log()
     ).sum() / len(y_train)
 
     # Backward pass
     neg_logl_train.backward()
-    
+
     # Update parameters with gradient descent
     for param in mlp.parameters:
         param.data += -learning_rate * param.grad
@@ -358,13 +358,13 @@ for epoch in range(epochs):
 
 ### Key Components
 
-1. **Initial Gradient Setting**: 
+1. **Initial Gradient Setting**:
    - Recall that is set to `neg_logl_train.grad = 1.0` before calling `backward()`
    - This provides the starting point for the chain rule in backpropagation
    - Since we're differentiating a scalar loss, its derivative with respect to itself is 1
    - Without this initialization, gradients would all be zero during backpropagation
 
-2. **Loss Function**: 
+2. **Loss Function**:
    The negative log likelihood ([binary cross-entropy](https://en.wikipedia.org/wiki/Cross-entropy)) is used because:
    - It's the [proper scoring rule](https://en.wikipedia.org/wiki/Scoring_rule) for binary classification
    - It encourages confident predictions for correct classes
@@ -373,7 +373,7 @@ for epoch in range(epochs):
      `L = -[y log(p) + (1-y)log(1-p)]`
    - This loss has strong theoretical foundations in information theory and maximum likelihood estimation
 
-3. **Parameter Updates**: 
+3. **Parameter Updates**:
    - Simple gradient descent updates parameters in the direction that reduces the loss
    - The update rule is: `θ = θ - η ∇L(θ)`
    - Where:

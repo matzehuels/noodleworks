@@ -1,0 +1,11 @@
+repos:
+- repo: https://github.com/kynan/nbstripout
+  rev: 0.8.1  # Use the latest stable version
+  hooks:
+    - id: nbstripout
+      files: ".ipynb$"
+      # Strip metadata that often changes but isn't meaningful
+      args: [
+        '--extra-keys=metadata.kernelspec metadata.language_info.version metadata.vscode metadata.toc',
+      ]
+      stages: [pre-commit]  # Run during commit
