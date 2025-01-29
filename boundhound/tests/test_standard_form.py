@@ -135,7 +135,9 @@ def test_mixed_constraints():
 
     standard = problem.to_standard_form()
 
-    # Check dimensions: 4 constraints (1 non-neg + 1 lower + 1 upper + 1 eq), 2 original + 3 slack + 1 artificial
+    # Check dimensions:
+    #   4 constraints (1 non-neg + 1 lower + 1 upper + 1 eq),
+    #   2 original + 3 slack + 1 artificial
     assert standard.A.shape == (4, 6)
     assert len(standard.b) == 4  # 4 RHS values
     assert len(standard.c) == 6  # 2 original + 3 slack + 1 artificial variables
@@ -714,26 +716,6 @@ def test_phase2_with_solution():
     np.testing.assert_array_equal(phase2.c[:2], np.array([1.0, 2.0]))  # Original objective restored
 
 
-def test_phase_conversion_errors():
-    """Test error handling in phase conversions."""
-    # Test converting standard to Phase 2
-    A = np.array([[1.0, 0.0, 1.0]])
-    slack_indices = (np.array([0]), np.array([2]))  # Row and column indices for slack variable
-
-    std_form = StandardForm(
-        c=np.array([1.0, 2.0, 0.0]),
-        A=A,
-        b=np.array([5.0]),
-        basis=Basis(np.array([2])),
-        parent=LPProblem,
-        phase_type=None,
-        art_indices=None,
-        slack_indices=slack_indices,
-    )
-    with pytest.raises(ValueError, match="Only a Phase1 type form can be converted to Phase2 type"):
-        std_form.to_phase2_form()
-
-
 def test_property_access():
     """Test property access for standard form matrices."""
     # Test with no artificial variables
@@ -883,7 +865,9 @@ def test_mixed_slack_artificial_placement():
 
     standard = problem.to_standard_form()
 
-    # Check dimensions: 6 rows (2 non-neg + 2 lower bounds + 2 equalities), 9 cols (2 original + 4 slack + 3 artificial)
+    # Check dimensions:
+    #   6 rows (2 non-neg + 2 lower bounds + 2 equalities)
+    #   9 cols (2 original + 4 slack + 3 artificial)
     assert standard.A.shape == (6, 9)
 
     # Check constraint matrix

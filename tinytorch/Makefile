@@ -4,6 +4,7 @@ SHELL := /bin/zsh   # or /bin/bash if you prefer
 
 # Create venv and install dependencies
 setup:
+	pip install uv
 	uv venv
 	source .venv/bin/activate
 	uv pip install -e ".[dev]"

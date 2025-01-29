@@ -1,29 +1,42 @@
 [build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "boundhound"
 version = "0.1.0"
-description = "A minimal Gurobi-like MIP optimization framework"
+description = "A minimal Gurobi-like MILP optimization framework"
 requires-python = ">=3.11"
+dependencies = ["numpy", "graphviz"]
 
-[tool.setuptools]
-packages = ["boundhound"]
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-cov",
+    "pytest-sugar",
+    "ruff",
+    "mypy",
+    "jupyter",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/boundhound"]
 
 [tool.ruff]
-line-length = 120
-target-version = "py311"
-fix = true
-extend-exclude = [".git", ".mypy_cache", ".pytest_cache", ".venv", "build", "dist", "site-packages"]
-select = ["E", "F", "I", "A"]
-ignore = ["E501"]
+target-version = "py39"
+line-length = 100
+extend-exclude = ["*.ipynb"]
+
+[tool.ruff.lint]
+ignore = ["N806", "N803", "PLR0913"]
+select = ["E", "F", "I", "N", "W", "B", "UP", "PL", "RUF"]
+per-file-ignores = {"tests/*" = ["PLR2004"]}
 
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"
 skip-magic-trailing-comma = false
-
+line-ending = "auto"
 
 [tool.pytest.ini_options]
 addopts = "--cov=. --cov-report=term-missing --cov-branch"
@@ -36,6 +49,7 @@ python_functions = "test_*"
 omit = ["tests/*"]
 
 [tool.mypy]
+files = ["src"]
 python_version = "3.11"
 ignore_missing_imports = true
 warn_return_any = true
@@ -50,3 +64,5 @@ warn_unused_ignores = true
 warn_no_return = true
 warn_unreachable = true
 strict_optional = true
+
+

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import TYPE_CHECKING, NamedTuple, Optional
+from typing import TYPE_CHECKING, NamedTuple
 
 import numpy as np
 
@@ -26,18 +26,6 @@ class PhaseType(Enum):
     PHASE2 = 2  # Phase 2 original objective
 
 
-class ConstraintType(Enum):
-    """Constraint types encoded as directions:
-    -1: less than or equal (≤)
-     0: equal (=)
-     1: greater than or equal (≥)
-    """
-
-    LESS_EQUAL = -1
-    EQUAL = 0
-    GREATER_EQUAL = 1
-
-
 class SimplexStatus(Enum):
     """Termination status of the simplex algorithm."""
 
@@ -45,7 +33,6 @@ class SimplexStatus(Enum):
     INFEASIBLE = 2  # Problem is infeasible
     UNBOUNDED = 3  # Problem is unbounded
     MAX_ITERATIONS = 4  # Hit iteration limit
-    NUMERICAL_ISSUES = 5  # Encountered numerical issues
 
 
 class NodeStatus(Enum):
@@ -72,7 +59,7 @@ class MILPStatus(Enum):
 class LPSolution(NamedTuple):
     """Solution to a linear program."""
 
-    x: Optional[np.ndarray]  # Solution vector (None if no solution found)
-    value: Optional[float]  # Objective value (None if no solution found)
+    x: np.ndarray | None  # Solution vector (None if no solution found)
+    value: float | None  # Objective value (None if no solution found)
     status: SimplexStatus  # Status of the solution
-    basis: Optional["Basis"]  # Basis for solution
+    basis: Basis  # Basis for solution

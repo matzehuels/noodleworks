@@ -29,7 +29,7 @@ All slack variables are negative since all constraints are converted to >= form:
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Tuple, TypeVar, Union
+from typing import TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -50,7 +50,7 @@ class RevisedSimplexSolver:
     uses it to compute reduced costs and update solutions efficiently.
     """
 
-    def __init__(self, problem: StandardForm, tol: float = 1e-8):
+    def __init__(self, problem: StandardForm, tol: float = 1e-8) -> None:
         """Initialize solver with problem data and initial basis."""
         self.problem = problem
         self._basis = self.problem.basis.copy()
@@ -80,42 +80,45 @@ class RevisedSimplexSolver:
     @property
     def basic_solution(self) -> NDArray[T]:
         """Current basic solution x_B = B^{-1}b."""
-        x_B = self._basis_inverse @ self.problem.b
-        return x_B
+        result = self._basis_inverse @ self.problem.b
+        return np.array(result, dtype=self.problem.b.dtype)
 
     @property
     def simplex_multipliers(self) -> NDArray[T]:
         """Simplex multipliers π = c_B^T B^{-1}."""
         c_B = self.problem.c[self._basis.indices]
-        pi = c_B @ self._basis_inverse
-        return pi
+        result = c_B @ self._basis_inverse
+        return np.array(result, dtype=self.problem.c.dtype)
 
     @property
     def reduced_costs(self) -> NDArray[T]:
         """Reduced costs c̄ = c - π^T A."""
         pi = self.simplex_multipliers
-        reduced = self.problem.c - (pi @ self.problem.A)
-        return reduced
+        result = self.problem.c - (pi @ self.problem.A)
+        return np.array(result, dtype=self.problem.c.dtype)
 
     @property
-    def entering_variable(self) -> Optional[int]:
+    def entering_variable(self) -> int | None:
         """Select entering variable with most negative reduced cost (for minimization)."""
         eligible = np.where(self.reduced_costs < -self.tol)[0]
         if len(eligible) == 0:
             return None
         entering_idx = eligible[np.argmin(self.reduced_costs[eligible])]
-        return entering_idx
+        return int(entering_idx)
 
     @property
-    def leaving_variable(self) -> Optional[int]:
+    def leaving_variable(self) -> int | None:
         """Select leaving variable using minimum ratio test.
 
         Following the revised simplex method:
-        1. Compute direction d = B^{-1} A
+        1. Compute direction d = B^{-1} A_j where j is entering variable
         2. If d ≤ 0, problem is unbounded
         3. For d_i > 0, compute ratios x_i/d_i
         4. Select minimum ratio as leaving variable
         """
+        if self.entering_variable is None:
+            return None
+
         d = self._basis_inverse @ self.problem.A[:, self.entering_variable]
         if np.all(d <= self.tol):
             logger.warning("All directions non-positive - problem is unbounded")
@@ -133,7 +136,7 @@ class RevisedSimplexSolver:
         ratios[positive_d] = self.basic_solution[positive_d] / d[positive_d]
         leaving_idx = np.argmin(ratios)
 
-        return leaving_idx
+        return int(leaving_idx)
 
     @property
     def solution_vector(self) -> NDArray[T]:
@@ -143,26 +146,26 @@ class RevisedSimplexSolver:
         For Phase 2: Returns only original variables
         """
         # Construct full solution vector (including slack/artificial)
-        x_full = np.zeros(len(self.problem.c))
+        x_full = np.zeros(len(self.problem.c), dtype=self.problem.c.dtype)
         x_full[self._basis.indices] = self.basic_solution
 
         # For Phase 2, return only original variables
         if self.problem.phase_type == PhaseType.PHASE2:
             original_n = self.original_problem.n
-            return x_full[:original_n]
+            return np.array(x_full[:original_n], dtype=self.problem.c.dtype)
 
         return x_full
 
     @property
     def obj_value(self) -> float:
-        """Current value of objective."""
+        """Current value of objective function."""
         fac = self.original_problem.obj_factor
-        return fac * np.dot(self.problem.c[self._basis.indices], self.basic_solution)
+        return float(fac * np.dot(self.problem.c[self._basis.indices], self.basic_solution))
 
     def solve(self, max_iter: int = 100) -> LPSolution:
         """Solve linear program using revised simplex method."""
         for _ in range(max_iter):
-            # If no negative reduced costs and solution is feasible, we're optimal!
+            # Check optimality conditions
             if self.entering_variable is None:
                 if np.all(self.basic_solution >= -self.tol):
                     logger.info("Found optimal solution: %s", self.solution_vector)
@@ -174,17 +177,22 @@ class RevisedSimplexSolver:
                         basis=self._basis,
                     )
                 else:
-                    # No negative reduced costs but solution is infeasible
                     logger.warning("No improving direction but solution is infeasible")
                     return LPSolution(
-                        x=None, value=None, status=SimplexStatus.INFEASIBLE, basis=self._basis
+                        x=None,
+                        value=None,
+                        status=SimplexStatus.INFEASIBLE,
+                        basis=self._basis,
                     )
 
-            # Select entering and leaving variables
+            # Check for unboundedness
             if self.leaving_variable is None:
                 logger.warning("Problem is unbounded")
                 return LPSolution(
-                    x=None, value=None, status=SimplexStatus.UNBOUNDED, basis=self._basis
+                    x=None,
+                    value=None,
+                    status=SimplexStatus.UNBOUNDED,
+                    basis=self._basis,
                 )
 
             # Perform pivot and update basis
@@ -193,25 +201,27 @@ class RevisedSimplexSolver:
 
         # Max iterations reached
         logger.warning("Maximum iterations (%d) reached", max_iter)
-
         return LPSolution(
-            x=None, value=None, status=SimplexStatus.MAX_ITERATIONS, basis=self._basis
+            x=None,
+            value=None,
+            status=SimplexStatus.MAX_ITERATIONS,
+            basis=self._basis,
         )
 
 
 def solve_phase1(
-    phase1_problem: StandardForm, max_iter: int = 100, tol: float = 1e-8
-) -> Tuple[bool, LPSolution]:
+    phase1_problem: StandardForm,
+    max_iter: int = 100,
+    tol: float = 1e-8,
+) -> tuple[bool, LPSolution]:
     """Solve Phase 1 to find initial feasible solution.
 
     Phase 1 minimizes sum of artificial variables to find feasible solution.
     A solution is feasible only if all artificial variables are zero (within tolerance).
-    Returns (is_feasible, solution) where is_feasible is True if all artificial variables ≈ 0.
     """
     if phase1_problem.phase_type != PhaseType.PHASE1:
         raise ValueError("Problem not in phase1 form")
 
-    # Create and solve Phase 1 problem, then heck if artificial variables are zero
     solution = RevisedSimplexSolver(problem=phase1_problem, tol=tol).solve(max_iter)
     is_feasible = solution.status == SimplexStatus.OPTIMAL
 
@@ -231,7 +241,9 @@ def solve_phase2(
 
 
 def solve_lp(
-    problem: Union[LPProblem, StandardForm], max_iter: int = 1000, tol: float = 1e-8
+    problem: LPProblem | StandardForm,
+    max_iter: int = 1000,
+    tol: float = 1e-8,
 ) -> LPSolution:
     """Solve linear program using two-phase revised simplex method.
 
@@ -253,17 +265,19 @@ def solve_lp(
         logger.info("Problem already in Phase 2 - solving directly")
         return solve_phase2(std_problem, max_iter, tol)
 
-    #  If not, we need to solve the Phase 1 problem first, and then proceed to Phase 2
+    # Otherwise, solve Phase 1 first
     phase1_problem = std_problem
     feasible, phase1_solution = solve_phase1(phase1_problem, max_iter, tol)
     if not feasible:
         logger.warning("Problem is infeasible")
         return LPSolution(
-            x=None, value=None, status=SimplexStatus.INFEASIBLE, basis=phase1_solution.basis
+            x=None,
+            value=None,
+            status=SimplexStatus.INFEASIBLE,
+            basis=phase1_solution.basis,
         )
 
     # Convert Phase 1 solution to Phase 2 and solve
     logger.info("Converting to Phase 2")
     phase2_problem = phase1_problem.to_phase2_form(phase1_solution)
-
     return solve_phase2(phase2_problem, max_iter, tol)

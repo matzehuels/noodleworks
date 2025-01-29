@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Sequence, Tuple, TypeVar, Union
+from collections.abc import Sequence
+from typing import TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -14,7 +15,13 @@ T = TypeVar("T", bound=np.floating)
 
 
 class InvalidBasisError(Exception):
-    """Raised when a basis is invalid."""
+    """Raised when a basis is invalid.
+
+    This error occurs when:
+    1. The basis matrix is not full rank
+    2. The number of basis vectors doesn't match the number of constraints
+    3. No valid basis can be found during construction
+    """
 
     pass
 
@@ -26,19 +33,18 @@ class Basis:
     by selecting m linearly independent columns from the constraint matrix A.
     """
 
-    def __init__(self, indices: Union[NDArray[np.int_], Sequence[int]]):
+    def __init__(self, indices: NDArray[np.int_] | Sequence[int]) -> None:
         """Initialize a basis with the given column indices."""
-        # Convert indices to numpy array if needed
-        if not isinstance(indices, np.ndarray):
-            indices = np.asarray(indices, dtype=np.int_)
-        self.indices = indices
+        self.indices: NDArray[np.int_] = (
+            indices if isinstance(indices, np.ndarray) else np.asarray(indices, dtype=np.int_)
+        )
 
     def __repr__(self) -> str:
         """Return a string representation of the basis."""
-        return f"Basis(indices={self.indices})"
+        return f"Basis(indices={self.indices!r})"
 
     def copy(self) -> Basis:
-        """Create a copy of the basis."""
+        """Create a deep copy of the basis."""
         return Basis(indices=self.indices.copy())
 
     @property
@@ -47,7 +53,12 @@ class Basis:
         return len(self.indices)
 
     def is_valid(self, A: NDArray[T]) -> bool:
-        """Check if basis matrix is valid according to the revised simplex method."""
+        """Check if basis matrix is valid according to the revised simplex method.
+
+        A basis is valid if:
+        1. The number of basis vectors equals the number of constraints
+        2. The basis vectors are linearly independent (full rank)
+        """
         m, _ = A.shape
         if self.m != m:
             return False
@@ -58,29 +69,26 @@ class Basis:
 
         # Get basis matrix and check rank
         B = A[:, self.indices]
-        if np.linalg.matrix_rank(B) != m:
-            return False
-
-        return True
+        return bool(np.linalg.matrix_rank(B) == m)
 
     @classmethod
     def from_standard_form(
         cls,
         A: NDArray[T],
-        slack_indices: Optional[Tuple[NDArray[np.int_], NDArray[np.int_]]] = None,
-        art_indices: Optional[Tuple[NDArray[np.int_], NDArray[np.int_]]] = None,
+        slack_indices: tuple[NDArray[np.int_], NDArray[np.int_]] | None = None,
+        art_indices: tuple[NDArray[np.int_], NDArray[np.int_]] | None = None,
     ) -> Basis:
         """Create a basis from a standard form problem.
 
-        Strategy:
-        1. Use artificial variables
-        2. Use original variables
+        The method follows a priority order to construct a valid basis:
+        1. Use artificial variables (these must be in the basis)
+        2. Use original variables with non-zero coefficients
         3. Use slack variables for remaining rows
         """
         m = A.shape[0]
         n_original = A.shape[1] - m if A.shape[1] > m else A.shape[1]
         basis_indices = np.zeros(m, dtype=np.int_)
-        used_rows = set()
+        used_rows: set[int] = set()
 
         # Priority 1: First use artificial variables (these must be in the basis)
         if art_indices is not None:
@@ -88,7 +96,7 @@ class Basis:
             basis_indices[art_rows] = art_cols
             used_rows.update(art_rows)
 
-        # Priority 2: Try original variables with non-zero coefficients for remaining rows
+        # Priority 2: Try original variables with non-zero coefficients
         remaining_rows = [i for i in range(m) if i not in used_rows]
         for row in remaining_rows:
             for j in range(n_original):
@@ -96,7 +104,7 @@ class Basis:
                     test_indices = basis_indices.copy()
                     test_indices[row] = j
                     # Check if valid for all assigned rows so far
-                    assigned_rows = list(used_rows) + [row]
+                    assigned_rows = [*list(used_rows), row]
                     test_basis = cls(indices=test_indices[assigned_rows])
                     if test_basis.is_valid(A[assigned_rows, :]):
                         basis_indices[row] = j
@@ -117,7 +125,7 @@ class Basis:
         # Verify final basis
         basis = cls(indices=basis_indices)
         if not basis.is_valid(A):
-            raise InvalidBasisError("Could not find valid basis")
+            raise InvalidBasisError("Could not construct a valid basis")
 
         return basis
 
@@ -126,19 +134,22 @@ class Basis:
         cls,
         phase1_solution: LPSolution,
         A: NDArray[T],
-        art_indices: Optional[Tuple[NDArray[np.int_], NDArray[np.int_]]] = None,
+        art_indices: tuple[NDArray[np.int_], NDArray[np.int_]] | None = None,
     ) -> Basis:
-        """Create a Phase 2 basis from a Phase 1 solution."""
+        """Create a Phase 2 basis from a Phase 1 solution.
+
+        This method attempts to replace artificial variables in the basis with
+        other available variables while maintaining basis validity.
+        """
         basis_indices = phase1_solution.basis.indices.copy()
 
-        # If no artificial variables or basis is valid, use it directly
+        # Replace artificial variables if present
         if art_indices is not None:
-            # Replace artificial variables with other available variables
             art_cols = art_indices[1]
             art_positions = np.nonzero(np.isin(basis_indices, art_cols))[0]
 
             if len(art_positions) > 0:
-                # Try replacing artificial variables with available non-artificial variables
+                # Try replacing artificial variables with non-artificial ones
                 non_art_vars = np.arange(A.shape[1])[~np.isin(np.arange(A.shape[1]), art_cols)]
                 for pos in art_positions:
                     available_vars = non_art_vars[~np.isin(non_art_vars, basis_indices)]
@@ -150,8 +161,9 @@ class Basis:
                             basis_indices = test_indices
                             break
 
+        # Create and verify final basis
         basis = cls(indices=basis_indices)
-        if basis.is_valid(A):
-            return basis
-        else:
-            raise InvalidBasisError("No valid basis found")
+        if not basis.is_valid(A):
+            raise InvalidBasisError("Could not construct a valid Phase 2 basis")
+
+        return basis

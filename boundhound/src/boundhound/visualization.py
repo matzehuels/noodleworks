@@ -1,8 +1,8 @@
 """Module for visualizing the branch and bound solution tree."""
 
-from typing import TYPE_CHECKING, List
+from typing import TYPE_CHECKING
 
-from graphviz import Digraph  # type: ignore
+from graphviz import Digraph
 
 from boundhound.branch_and_bound import NodeStatus
 
@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from boundhound.branch_and_bound import Node
 
 
-def plot_tree(nodes: List["Node"], output_format: str = "png") -> None:
+def plot_tree(nodes: list["Node"], output_format: str = "png") -> None:
     """Plot the branch and bound tree using graphviz with LaTeX formatting."""
     dot = Digraph("Branch and Bound Tree", format=output_format)
     dot.attr(rankdir="TB")  # Top to bottom direction

@@ -169,7 +169,6 @@ def test_basis_selection_with_ge_constraints():
             [0.0, -1.0, 0.0, 0.0, 0.0, -1.0],  # -y - s4 = -3 (y <= 3)
         ]
     )
-    b = np.array([2.0, 1.0, -4.0, -3.0])
 
     # Test with slack variables provided
     slack_indices = (np.arange(4), np.array([2, 3, 4, 5]))
@@ -196,7 +195,6 @@ def test_mixed_constraints_basis_selection():
             [1.0, -1.0, 0.0, 0.0, 1.0],  # x - y + a1 = 1 (equality)
         ]
     )
-    b = np.array([4.0, 1.0])
 
     # Test with mixed slack and artificial variables
     slack_indices = (np.array([0]), np.array([2]))

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from typing import Optional, Set, Tuple, TypeVar
+from typing import TypeVar
 
 import numpy as np
 from numpy.typing import NDArray
@@ -15,26 +15,34 @@ T = TypeVar("T", bound=np.floating)
 logger = logging.getLogger(__name__)
 
 
-class LPProblem(object):
-    parent = None
+class LPProblem:
+    """A linear programming problem in inequality form.
+
+    The problem is of the form:
+        min/max c^T x
+        s.t. A_ub x <= b_ub
+             A_lb x >= b_lb
+             A_eq x = b_eq
+             lb <= x <= ub
+
+    Non-negativity constraints (x >= 0) are added by default for all variables
+    unless overridden by explicit bounds.
+    """
 
     def __init__(
         self,
         c: NDArray[T],
         sense: Sense = Sense.MIN,
-        A_ub: Optional[NDArray[T]] = None,
-        b_ub: Optional[NDArray[T]] = None,
-        A_lb: Optional[NDArray[T]] = None,
-        b_lb: Optional[NDArray[T]] = None,
-        A_eq: Optional[NDArray[T]] = None,
-        b_eq: Optional[NDArray[T]] = None,
-        lb: Optional[NDArray[T]] = None,
-        ub: Optional[NDArray[T]] = None,
+        A_ub: NDArray[T] | None = None,
+        b_ub: NDArray[T] | None = None,
+        A_lb: NDArray[T] | None = None,
+        b_lb: NDArray[T] | None = None,
+        A_eq: NDArray[T] | None = None,
+        b_eq: NDArray[T] | None = None,
+        lb: NDArray[T] | None = None,
+        ub: NDArray[T] | None = None,
     ) -> None:
-        """
-        Note: Non-negativity constraints (x >= 0) are added by default for all variables
-        unless overridden by explicit bounds.
-        """
+        """Initialize a linear programming problem."""
         self.sense = sense
         self._c = c
         self.A_ub = A_ub if A_ub is not None else np.zeros((0, self.n))
@@ -47,18 +55,15 @@ class LPProblem(object):
         self.ub = ub if ub is not None else np.full(self.n, np.inf)  # Default to no upper bounds
 
     def __repr__(self) -> str:
-        """Return a string that could be used to recreate the object."""
+        """Return a string representation that could recreate the object."""
         args = [f"c={self._c!r}", f"sense={self.sense!r}"]
 
         if self.A_ub.size > 0:
-            args.append(f"A_ub={self.A_ub!r}")
-            args.append(f"b_ub={self.b_ub!r}")
+            args.extend([f"A_ub={self.A_ub!r}", f"b_ub={self.b_ub!r}"])
         if self.A_lb.size > 0:
-            args.append(f"A_lb={self.A_lb!r}")
-            args.append(f"b_lb={self.b_lb!r}")
+            args.extend([f"A_lb={self.A_lb!r}", f"b_lb={self.b_lb!r}"])
         if self.A_eq.size > 0:
-            args.append(f"A_eq={self.A_eq!r}")
-            args.append(f"b_eq={self.b_eq!r}")
+            args.extend([f"A_eq={self.A_eq!r}", f"b_eq={self.b_eq!r}"])
         if not np.all(self.lb == 0):
             args.append(f"lb={self.lb!r}")
         if not np.all(np.isinf(self.ub)):
@@ -68,20 +73,22 @@ class LPProblem(object):
 
     @property
     def obj_factor(self) -> float:
+        """Factor to adjust objective for maximization problems."""
         return -1 if self.sense == Sense.MAX else 1
 
     @property
     def c(self) -> NDArray[T]:
-        return self.obj_factor * self._c
+        """Objective coefficients adjusted for maximization."""
+        return (self.obj_factor * self._c).astype(self._c.dtype)
 
     @property
     def n(self) -> int:
         """Number of variables in the problem."""
-        return len(self.c)
+        return len(self._c)
 
     def _remove_redundant_constraints(
         self, A: NDArray[T], b: NDArray[T]
-    ) -> Tuple[NDArray[T], NDArray[T]]:
+    ) -> tuple[NDArray[T], NDArray[T]]:
         """Remove redundant constraints by normalizing and finding unique rows."""
         if A.size == 0:
             return A, b
@@ -100,8 +107,8 @@ class LPProblem(object):
 
         return A[unique_idx], b[unique_idx]
 
-    def to_standard_form(self) -> StandardForm:
-        """Convert an inequality form linear programming problem to standard form.
+    def to_standard_form(self) -> StandardForm:  # noqa: PLR0915
+        """Convert to standard form for simplex method solution.
 
         The standard form has the following properties:
         1. Variable bounds (x >= lb) in variable order
@@ -117,7 +124,7 @@ class LPProblem(object):
 
         All slack variables are negative since all constraints are converted to >= form:
         - Lower bounds (x >= b) become x - s = b
-        - Upper bounds (x <= b) become -x - s = -b (after converting to -x >= -b)
+        - Upper bounds (x <= b) become -x - s = -b
         - Equalities (x = b) get artificial variables
         - Lower bounds (Ax >= b) with b > 0 get artificial variables if no trivial solution exists
         """
@@ -132,9 +139,9 @@ class LPProblem(object):
             bound_rhs.extend(-values[mask] if negate else values[mask])
 
         # Handle inequality constraints (get slack variables)
-        ineq_constraints = []
-        ineq_rhs = []
-        needs_artificial = []  # Track which rows need artificial variables
+        ineq_constraints: list[NDArray] = []
+        ineq_rhs: list[float] = []
+        needs_artificial: list[int] = []  # Track which rows need artificial variables
 
         # Handle lower bounds (Ax >= b)
         if self.A_lb.size > 0:
@@ -155,12 +162,12 @@ class LPProblem(object):
             ineq_rhs.extend(-b_ub)
 
         # Handle equality constraints (get artificial variables)
-        eq_constraints = []
-        eq_rhs = []
+        eq_constraints: list[NDArray] = []
+        eq_rhs: list[float] = []
         if self.A_eq.size > 0:
             A_eq, b_eq = self._remove_redundant_constraints(self.A_eq, self.b_eq)
             eq_constraints.extend([A_eq])
-            eq_rhs.extend(b_eq.tolist())
+            eq_rhs.extend(b_eq)
 
         # Stack all constraints in order: inequalities first, then equalities
         A = np.vstack([*bound_constraints, *ineq_constraints, *eq_constraints])
@@ -194,8 +201,8 @@ class LPProblem(object):
             slack_indices = None
 
         # Add artificial variables for equalities and infeasible inequalities
-        art_rows = []
-        art_cols = []
+        art_rows: list[int] = []
+        art_cols: list[int] = []
 
         # First add artificial variables for infeasible inequalities
         if n_art_ineq > 0:
@@ -235,26 +242,22 @@ class LPProblem(object):
         )
 
     def copy(self) -> LPProblem:
-        """Create a deep copy of this InequalityForm.
-
-        Returns:
-            A new InequalityForm instance with copies of all arrays.
-        """
+        """Create a deep copy of this problem."""
         return LPProblem(
             c=self._c.copy(),
             sense=self.sense,
-            A_ub=self.A_ub.copy() if self.A_ub is not None else None,
-            b_ub=self.b_ub.copy() if self.b_ub is not None else None,
-            A_lb=self.A_lb.copy() if self.A_lb is not None else None,
-            b_lb=self.b_lb.copy() if self.b_lb is not None else None,
-            A_eq=self.A_eq.copy() if self.A_eq is not None else None,
-            b_eq=self.b_eq.copy() if self.b_eq is not None else None,
-            lb=self.lb.copy() if self.lb is not None else None,
-            ub=self.ub.copy() if self.ub is not None else None,
+            A_ub=self.A_ub.copy() if self.A_ub.size > 0 else None,
+            b_ub=self.b_ub.copy() if self.b_ub.size > 0 else None,
+            A_lb=self.A_lb.copy() if self.A_lb.size > 0 else None,
+            b_lb=self.b_lb.copy() if self.b_lb.size > 0 else None,
+            A_eq=self.A_eq.copy() if self.A_eq.size > 0 else None,
+            b_eq=self.b_eq.copy() if self.b_eq.size > 0 else None,
+            lb=self.lb.copy(),
+            ub=self.ub.copy(),
         )
 
 
-class StandardForm(object):
+class StandardForm:
     """A linear program in standard form, ready for simplex method solution."""
 
     def __init__(
@@ -263,11 +266,12 @@ class StandardForm(object):
         A: NDArray[T],
         b: NDArray[T],
         basis: Basis,
-        phase_type: Optional[PhaseType],
+        phase_type: PhaseType | None,
         parent: StandardForm | LPProblem,
-        art_indices: Optional[Tuple[NDArray[np.int_], NDArray[np.int_]]],
-        slack_indices: Optional[Tuple[NDArray[np.int_], NDArray[np.int_]]],
+        art_indices: tuple[NDArray[np.int_], NDArray[np.int_]] | None,
+        slack_indices: tuple[NDArray[np.int_], NDArray[np.int_]] | None,
     ) -> None:
+        """Initialize a standard form linear program."""
         self.c = c
         self.A = A
         self.b = b
@@ -278,7 +282,7 @@ class StandardForm(object):
         self.slack_indices = slack_indices
 
     def __repr__(self) -> str:
-        """Return a string that could be used to recreate the object."""
+        """Return a string representation that could recreate the object."""
         args = [
             f"c={self.c!r}",
             f"A={self.A!r}",
@@ -291,7 +295,7 @@ class StandardForm(object):
         ]
         return f"StandardForm({', '.join(args)})"
 
-    def to_phase2_form(self, phase1_solution: Optional[LPSolution] = None) -> StandardForm:
+    def to_phase2_form(self, phase1_solution: LPSolution) -> StandardForm:
         """Convert Phase 1 problem to Phase 2 (original optimization problem).
 
         Strategy:
@@ -305,7 +309,8 @@ class StandardForm(object):
         elif self.phase_type is None:
             raise ValueError("Only a Phase1 type form can be converted to Phase2 type")
 
-        # Restore original objective coefficients, extended with large positive values for artificial variables
+        # Restore original objective coefficients, extended with large positive values
+        # for artificial variables
         c_phase2 = np.zeros_like(self.c)
         c_phase2[: len(self.parent.c)] = self.parent.c
         if self.art_indices is not None:
@@ -328,4 +333,4 @@ class MILPProblem:
     """A mixed-integer linear programming problem."""
 
     lp: LPProblem
-    integer_vars: Set[int]
+    integer_vars: set[int]
