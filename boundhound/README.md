@@ -1,17 +1,61 @@
-# 🐶 📈 BoundHound: A Branch-and-Bound Optimization Solver
+# BoundHound 🐶 📈
 
-BoundHound is an educational implementation of a [branch-and-bound](https://en.wikipedia.org/wiki/Branch_and_bound) solver for [Mixed Integer Programming (MIP)](https://en.wikipedia.org/wiki/Integer_programming) problems. While commercial solvers like [Gurobi](https://en.wikipedia.org/wiki/Gurobi), CPLEX, and CBC focus on performance, BoundHound emphasizes clarity to facilitate understanding of optimization algorithms.
+BoundHound is an educational implementation of [branch-and-bound](https://en.wikipedia.org/wiki/Branch_and_bound) optimization in Python. While commercial solvers like Gurobi, CPLEX, and CBC focus on performance, BoundHound emphasizes clarity to facilitate understanding of optimization algorithms.
 
-## 1. Core Concepts
+> **Educational Note**: This is a learning-focused implementation meant to illustrate the fundamentals of optimization algorithms. While functional, it is not intended for production use. For real applications, please use established solvers like Gurobi, CPLEX, or CBC.
 
-### 1.1 Linear Programming
+## Features 🌟
 
-[Linear programming](https://en.wikipedia.org/wiki/Linear_programming) forms the foundation of modern mathematical optimization. At its core, a linear program consists of a linear objective function to be optimized subject to linear constraints. The objective function takes the form c₁x₁ + c₂x₂ + ... + cₙxₙ, where each cᵢ represents the contribution of decision variable xᵢ to the objective value. The constraints similarly maintain linearity, expressed as linear combinations of variables bounded by constants: a₁₁x₁ + a₁₂x₂ + ... + a₁ₙxₙ ≤ b₁.
+BoundHound provides the fundamental building blocks needed for mixed-integer optimization:
+- Linear Programming (LP) solver using the revised simplex method
+- Mixed-Integer Linear Programming (MILP) solver using branch-and-bound
+- Standard form transformations and problem preprocessing
+- Efficient basis management and pivoting strategies
+- Comprehensive property-based testing
+- Interactive visualization of branch-and-bound trees
 
-The fundamental property that makes linear programming tractable is the [convexity](https://en.wikipedia.org/wiki/Convex_optimization) of its feasible region. This geometric property ensures that any [local optimum](https://en.wikipedia.org/wiki/Local_optimum) is also globally optimal. The feasible region, formed by the intersection of the constraint [halfspaces](https://en.wikipedia.org/wiki/Half-space_(geometry)), creates a [polytope](https://en.wikipedia.org/wiki/Polytope) in n-dimensional space. This polytope's structure leads to one of the most important theoretical results in linear programming: the optimal solution, if it exists, occurs at a [vertex](https://en.wikipedia.org/wiki/Vertex_(geometry)) of this polytope.
+## Development Setup 🛠️
 
-Consider a production planning scenario where a manufacturer must decide production quantities for two products. Each product contributes to profit (the objective) while consuming limited resources (the constraints):
+### Prerequisites
 
+BoundHound is built with a minimal set of modern Python tools:
+- [NumPy](https://numpy.org/) for efficient matrix operations
+- [Ruff](https://github.com/astral-sh/ruff) for formatting and linting
+- [MyPy](http://mypy-lang.org/) for static type checking
+- [Pytest](https://docs.pytest.org/) and [Hypothesis](https://hypothesis.works/) for robust testing
+- [Graphviz](https://graphviz.org/) for branch-and-bound tree visualizations
+
+### Quick Start
+
+```bash
+# Clone the repository
+git clone https://github.com/yourusername/boundhound.git
+cd boundhound
+
+# Create virtual environment and install dependencies
+make setup
+
+# Run tests to verify installation
+make test
+
+# Optional: Run type checking and linting
+make check
+make lint
+```
+
+## Core Concepts 🧠
+
+### 1. Linear Programming Theory
+
+[Linear programming](https://en.wikipedia.org/wiki/Linear_programming) forms the foundation of modern mathematical optimization. At its core, a linear program consists of:
+
+1. A linear objective function: c^T x
+2. Linear equality constraints: Ax = b
+3. Non-negativity requirements: x ≥ 0
+
+The fundamental property that makes linear programming tractable is the [convexity](https://en.wikipedia.org/wiki/Convex_optimization) of its feasible region. This geometric property ensures that any [local optimum](https://en.wikipedia.org/wiki/Local_optimum) is also globally optimal.
+
+Consider a simple production problem:
 ```
 maximize  3x₁ + 2x₂             (profit from products 1 and 2)
 subject to:
@@ -20,111 +64,305 @@ subject to:
     x₁, x₂ ≥ 0                 (non-negativity constraints)
 ```
 
-This formulation embodies several key properties of linear programs. The feasible region is convex, meaning any line segment connecting two feasible points lies entirely within the feasible region. Vertices occur where constraint boundaries intersect, and in some cases, multiple constraints may intersect at a single point, leading to degeneracy—a crucial consideration in algorithmic implementation.
+The feasible region, formed by the intersection of these constraints, creates a [polytope](https://en.wikipedia.org/wiki/Polytope). The optimal solution must occur at a vertex of this polytope - a fundamental theorem that underlies the simplex method.
 
-In BoundHound, linear programs are represented by the `LPProblem` class, which provides a flexible interface for problem construction:
+### 2. Standard Form and Transformations
+
+Before solving, all linear programs must be converted to standard form. This transformation process is more subtle than it might appear and requires careful handling of several cases:
+
+#### Theory
+
+A linear program in standard form has:
+1. All constraints as equations (Ax = b)
+2. All variables non-negative (x ≥ 0)
+3. Minimization objective
+
+The transformation process involves:
+
+1. **Inequality Conversion**: Each inequality constraint must be converted to an equation by introducing slack or surplus variables:
+   - For ≤: Add a non-negative slack (2x₁ + x₂ ≤ 10 → 2x₁ + x₂ + s₁ = 10)
+   - For ≥: Subtract a non-negative surplus (2x₁ + x₂ ≥ 10 → 2x₁ + x₂ - s₁ = 10)
+
+2. **Free Variable Handling**: Variables without sign restrictions must be split:
+   - x = x⁺ - x⁻ where x⁺, x⁻ ≥ 0
+   - This preserves linearity while ensuring non-negativity
+
+3. **Objective Normalization**: 
+   - Maximize cx → Minimize -cx
+   - Constants in the objective don't affect optimization
+
+#### Implementation
+
+BoundHound implements these transformations in a specific order to maintain numerical stability:
 
 ```python
-problem = LPProblem(
-    c=np.array([3.0, 2.0]),             # Objective coefficients
-    A_ub=np.array([[2.0, 1.0],          # Upper bound constraints
-                   [1.0, 3.0]]),
-    b_ub=np.array([10.0, 15.0]),        # Right-hand sides
-    lb=np.array([0.0, 0.0])             # Non-negativity constraints
-)
+def to_standard_form(self) -> StandardForm:
+    """Convert to standard form maintaining specific ordering:
+    1. Variable bounds (x >= lb) in variable order
+    2. Variable bounds (x <= ub) in variable order
+    3. General lower bounds (Ax >= b)
+    4. General upper bounds (Ax <= b)
+    5. Equality constraints (Ax = b)
+    """
 ```
 
-The class supports various constraint types:
-- Upper and lower bound constraints (`A_ub`, `b_ub`, `A_lb`, `b_lb`)
-- Equality constraints (`A_eq`, `b_eq`)
-- Variable bounds (`lb`, `ub`)
-- Objective sense (minimize/maximize)
+### 3. The Two-Phase Simplex Method
 
-### 1.2 Mixed Integer Programming
+The two-phase method solves a fundamental challenge: finding an initial feasible solution to start the simplex algorithm.
 
-The extension to [mixed integer programming](https://en.wikipedia.org/wiki/Integer_programming) introduces a fundamental change in the mathematical structure of optimization problems. By requiring certain variables to take only integer values, we break the convexity property that makes linear programming tractable. The feasible region becomes a [discrete set](https://en.wikipedia.org/wiki/Discrete_set) of points, rather than a continuous polytope, fundamentally altering the nature of the optimization problem.
+#### Theory
 
-The introduction of integrality constraints transforms a [polynomial-time](https://en.wikipedia.org/wiki/Time_complexity#Polynomial_time) solvable problem into an [NP-hard](https://en.wikipedia.org/wiki/NP-hardness) one. This complexity arises from the [combinatorial](https://en.wikipedia.org/wiki/Combinatorial_optimization) nature of integer solutions—we can no longer rely on local improvement methods to find global optima. The number of potential integer solutions grows exponentially with problem size, and the loss of convexity means that local optima may not be globally optimal.
+The challenge arises because the simplex method requires a starting basic feasible solution, but finding one for arbitrary constraints is as hard as solving the original LP. The two-phase method solves this by:
 
-When we modify our production example to require integer quantities for the first product:
+1. **Phase I**: Create and solve an auxiliary problem
+   - Add artificial variables to make finding a feasible solution trivial
+   - Minimize the sum of artificial variables
+   - If minimum is 0, original problem is feasible
+   - If minimum > 0, original problem is infeasible
+
+2. **Phase II**: Solve the original problem
+   - Use the feasible basis from Phase I
+   - Remove artificial variables
+   - Optimize original objective
+
+Consider the system:
 ```
-maximize  3x₁ + 2x₂
+x₁ + 2x₂ = 4
+x₁, x₂ ≥ 0
+```
+
+Phase I creates:
+```
+minimize    a₁              (artificial variable)
 subject to:
-    2x₁ + x₂ ≤ 10
-    x₁ + 3x₂ ≤ 15
-    x₁, x₂ ≥ 0
-    x₁ must be integer
+    x₁ + 2x₂ + a₁ = 4      (original constraint + artificial)
+    x₁, x₂, a₁ ≥ 0         (non-negativity)
 ```
 
-The problem becomes fundamentally harder. The optimal solution to the linear programming relaxation (ignoring integrality) provides an upper bound on the optimal integer solution, but the gap between these values—known as the integrality gap—can be substantial. This gap motivates many of the sophisticated techniques used in integer programming, including cutting planes that progressively tighten the relaxation and branching strategies that intelligently partition the solution space.
+If we can drive a₁ to zero, we've found a feasible solution to the original problem.
 
-BoundHound implements mixed integer programs through the `MILPProblem` class, which combines an `LPProblem` with a set of integer variable indices:
+#### Implementation
+
+BoundHound implements this through careful basis management:
 
 ```python
-milp = MILPProblem(
-    lp=problem,                    # Base linear program
-    integer_vars={0}               # x₁ must be integer
-)
+def solve_phase1(phase1_problem: StandardForm) -> tuple[bool, LPSolution]:
+    """Find initial feasible solution by minimizing artificial variables.
+    
+    Returns:
+        is_feasible: Whether original problem has feasible solution
+        solution: Phase I solution with feasible basis (if found)
+    """
+    solution = RevisedSimplexSolver(problem=phase1_problem).solve()
+    is_feasible = solution.status == SimplexStatus.OPTIMAL
+    return is_feasible, solution
+
+def to_phase2_form(self, phase1_solution: LPSolution) -> StandardForm:
+    """Convert Phase I solution to Phase II problem.
+    
+    Strategy:
+    1. Keep the same A matrix and b vector
+    2. Restore original objective coefficients
+    3. Keep artificial variables in matrix but with large positive
+       coefficients to prevent them from re-entering the basis
+    """
 ```
 
-The solution process, implemented in `BranchAndBoundSolver`, maintains a tree of nodes where each node represents a linear programming relaxation. The solver tracks:
-- Global bounds through the `MILPSolution` class
-- Node status (optimal, infeasible, unbounded)
-- Solution quality via the `mip_gap` property
-- Search tree visualization with the `render()` method
+### 4. The Revised Simplex Method
 
-## 2. The Simplex Method
+The revised simplex method represents a significant computational advancement over the original simplex algorithm, focusing on efficient matrix operations and numerical stability.
 
-### 2.1 Standard Form and Transformations
+#### Theory
 
-The [simplex method](https://en.wikipedia.org/wiki/Simplex_algorithm) operates on a specific canonical form of linear programs, known as [standard form](https://en.wikipedia.org/wiki/Standard_form_(linear_programming)). This standardization transforms the diverse ways of expressing linear programs into a uniform structure.
+The method operates on the concept of a basis - a set of m linearly independent columns from the constraint matrix A. Given a basis B, we can:
+1. Compute the basic solution: xᵦ = B⁻¹b
+2. Calculate reduced costs: c̄ₙ = cₙ - (cᵦᵀB⁻¹)Aₙ
+3. Determine optimality: solution is optimal if c̄ₙ ≥ 0 for minimization
 
-The transformation process requires several carefully constructed steps. Inequality constraints must be converted to equations through the introduction of [slack variables](https://en.wikipedia.org/wiki/Slack_variable). For a "less than or equal to" constraint (≤), we add a non-negative slack variable that measures the unused capacity: 2x₁ + x₂ ≤ 10 becomes 2x₁ + x₂ + s₁ = 10, where s₁ ≥ 0. Conversely, "greater than or equal to" constraints (≥) require [surplus variables](https://en.wikipedia.org/wiki/Slack_variable) subtracted from the left side.
+The key insight is maintaining the basis inverse B⁻¹ rather than the full tableau. This leads to three core operations:
 
-Variables with arbitrary sign (free variables) present another challenge. The standard form requires all variables to be non-negative, so we decompose each free variable into the difference of two non-negative variables: x = x⁺ - x⁻, where x⁺, x⁻ ≥ 0. This transformation doubles the number of variables but preserves the problem's structure.
+1. **Computing Basic Solution**:
+   ```
+   xᵦ = B⁻¹b         (basic variables)
+   xₙ = 0           (non-basic variables)
+   ```
 
-The objective function must also be standardized. Maximization problems are converted to minimization by negating the objective coefficients, and any constant terms in the objective function can be moved outside the optimization problem, as they don't affect the optimal solution.
+2. **Pricing (Finding Entering Variable)**:
+   ```
+   π = cᵦᵀB⁻¹       (simplex multipliers)
+   c̄ₙ = cₙ - πᵀAₙ   (reduced costs)
+   ```
 
-### 2.2 Basic Solutions and Pivoting
+3. **Ratio Test (Finding Leaving Variable)**:
+   ```
+   d = B⁻¹Aⱼ        (direction vector)
+   θ = min{xᵢ/dᵢ : dᵢ > 0}  (maximum step length)
+   ```
 
-The simplex method's efficiency stems from its movement between [basic feasible solutions](https://en.wikipedia.org/wiki/Basic_feasible_solution)—points where exactly m variables (where m is the number of constraints) are non-zero, and these variables correspond to linearly independent columns of the constraint matrix A. These points are represented by a [basis matrix](https://en.wikipedia.org/wiki/Basis_(linear_algebra)) B, an m×m nonsingular submatrix of A, which allows us to compute the values of the basic variables as xᵦ = B⁻¹b.
+#### Implementation
 
-The pivoting process that moves between basic feasible solutions involves sophisticated numerical computations. First, we compute reduced costs for non-basic variables using the formula c̄ₖ = cₖ - π^T aₖ, where π = c_B^T B⁻¹ represents the simplex multipliers. These reduced costs measure the rate of improvement in the objective function per unit increase in each non-basic variable.
+BoundHound implements these operations with careful attention to numerical stability:
 
-The selection of entering and leaving variables requires careful consideration of numerical stability. While choosing the most negative reduced cost (in minimization) often works well, sophisticated implementations use more nuanced selection criteria. The ratio test, which determines how far we can move in the chosen direction, must account for degeneracy and numerical precision: min{xᵢ/aᵢₖ : aᵢₖ > 0}.
+```python
+class RevisedSimplexSolver:
+    """Revised simplex method solver for linear programs in standard form."""
+    
+    @property
+    def basic_solution(self) -> NDArray[T]:
+        """Current basic solution x_B = B^{-1}b."""
+        result = self._basis_inverse @ self.problem.b
+        return np.array(result, dtype=self.problem.b.dtype)
+    
+    @property
+    def reduced_costs(self) -> NDArray[T]:
+        """Reduced costs c̄ = c - πᵀA."""
+        pi = self.simplex_multipliers
+        result = self.problem.c - (pi @ self.problem.A)
+        return np.array(result, dtype=self.problem.c.dtype)
+    
+    @property
+    def leaving_variable(self) -> int | None:
+        """Select leaving variable using minimum ratio test."""
+        d = self._basis_inverse @ self.problem.A[:, self.entering_variable]
+        ratios = np.full_like(d, np.inf)
+        positive_d = d > self.tol
+        ratios[positive_d] = self.basic_solution[positive_d] / d[positive_d]
+        return int(np.argmin(ratios))
+```
 
-### 2.3 Revised Simplex Implementation
+### 5. Mixed Integer Programming
 
-The [revised simplex method](https://en.wikipedia.org/wiki/Revised_simplex_method) represents a significant computational advancement over the original simplex algorithm. At its core lies the efficient maintenance of the basis inverse through [matrix factorization](https://en.wikipedia.org/wiki/Matrix_decomposition) techniques. Rather than working with the full inverse matrix B⁻¹, the method maintains an [LU factorization](https://en.wikipedia.org/wiki/LU_decomposition) B = LU, where L is lower triangular and U is upper triangular. This factorization allows for more stable [numerical computations](https://en.wikipedia.org/wiki/Numerical_analysis) and efficient updates as the basis changes.
+Mixed Integer Programming (MIP) extends linear programming by requiring some variables to take integer values. This seemingly simple change fundamentally alters the problem's complexity.
 
-The method employs sophisticated pricing strategies to reduce computational overhead. Instead of examining all non-basic variables at each iteration, partial pricing examines only a subset of promising candidates. This approach, while potentially requiring more iterations, often reduces overall computation time significantly. Multiple pricing extends this concept by selecting several entering variables simultaneously, allowing for parallel computation of steps. The steepest edge criterion provides a more nuanced approach to variable selection by considering the geometric interpretation of the simplex method, selecting moves that make the most progress toward optimality.
+#### Theory
 
-[Cycling](https://en.wikipedia.org/wiki/Cycling_(linear_programming)) prevention represents another crucial aspect of the implementation. While cycling (infinite loops between bases) is rare in practice, its possibility necessitates careful handling. [Bland's rule](https://en.wikipedia.org/wiki/Bland%27s_rule) provides a simple but effective anti-cycling mechanism by always selecting the eligible variable with the lowest index. More sophisticated implementations may employ perturbation methods, slightly modifying the problem data to avoid degenerate vertices, or use lexicographic ordering to ensure a unique path through the solution space.
+The key challenge in MIP comes from the loss of convexity. Consider:
+```
+maximize    5x₁ + 4x₂
+subject to:
+    x₁ + x₂ ≤ 3.5
+    x₁, x₂ ≥ 0
+    x₁, x₂ integer
+```
 
-### 2.4 Two-Phase Method
+The LP relaxation (ignoring integrality) has solution (2.5, 1), but the integer optimal is (2, 1). This illustrates two key concepts:
 
-The two-phase method addresses the fundamental challenge of finding an initial feasible solution to a linear program. Phase I constructs an auxiliary problem by introducing artificial variables to create an obvious, though possibly non-optimal, starting point. These artificial variables are added to constraints where a feasible solution is not immediately apparent, particularly equality constraints and "greater than or equal to" inequalities.
+1. **LP Relaxation**: Solving the problem without integer constraints
+   - Provides an upper bound for maximization
+   - Faster to solve than the integer problem
+   - May have fractional values
 
-The auxiliary objective function minimizes the sum of artificial variables, effectively attempting to drive them to zero. This phase serves a dual purpose: it determines whether the original problem has any feasible solutions while potentially constructing one if it exists. A positive minimum in the Phase I problem indicates infeasibility in the original problem—no solution exists that satisfies all constraints. Conversely, a zero minimum confirms feasibility and provides a valid starting basis for Phase II.
+2. **Integrality Gap**: Difference between integer and LP optimal values
+   - Measures problem difficulty
+   - Guides branching decisions
+   - Used in optimality proofs
 
-The transition between phases requires careful handling of the basis structure. When artificial variables remain in the basis at zero levels, they must be replaced through a series of pivot operations to maintain feasibility. The original objective function is then restored, but the feasible basis discovered in Phase I provides the crucial starting point for optimization.
+#### Implementation
 
-## 3. Branch and Bound
+BoundHound represents MIPs through a combination of LP and integer requirements:
 
-The [branch-and-bound](https://en.wikipedia.org/wiki/Branch_and_bound) algorithm represents a sophisticated approach to mixed integer programming that combines the power of linear programming with intelligent enumeration. The method maintains a [tree structure](https://en.wikipedia.org/wiki/Tree_(data_structure)) where each node represents a linear programming relaxation with additional variable bounds. The root node contains the original problem with integer constraints relaxed, and subsequent nodes progressively restrict variables to integer values.
+```python
+@dataclass
+class MILPProblem:
+    """A mixed-integer linear programming problem."""
+    lp: LPProblem
+    integer_vars: set[int]  # Indices of integer variables
 
-### 3.1 Tree Construction and Management
+    def is_integer_feasible(self, x: NDArray[np.float64]) -> bool:
+        """Check if solution satisfies integrality constraints."""
+        return all(abs(x[i] - round(x[i])) <= self.tol 
+                  for i in self.integer_vars)
+```
 
-The efficiency of branch and bound heavily depends on the underlying data structures and management strategies. Each node in the tree maintains not only the problem data—constraints, bounds, and objective function—but also solution information and the history of branching decisions that led to its creation. This historical information proves invaluable for developing branching heuristics and warm-starting subsequent solves.
+### 6. Branch and Bound
 
-[Strong branching](https://en.wikipedia.org/wiki/Branch_and_bound#Variable_selection) represents a key technique for making intelligent branching decisions. By temporarily exploring the impact of different branching choices before committing to one, the algorithm can make more informed decisions at the cost of additional computation. Pseudo-costs track the historical impact of branching on particular variables, providing a computationally cheaper alternative to full strong branching while maintaining much of its effectiveness.
+Branch and bound provides a systematic way to solve MIPs by dividing the problem into smaller subproblems and using bounds to prune unpromising branches. The algorithm combines the power of linear programming relaxations with intelligent enumeration.
 
-Memory management plays a crucial role in the implementation. The tree structure can grow exponentially, requiring careful balance between memory usage and computational efficiency. Node pools implement sophisticated storage strategies, potentially writing less promising nodes to disk while maintaining hot nodes in memory. Modern implementations often exploit parallel processing capabilities, exploring multiple branches simultaneously while ensuring proper synchronization of bounds and solutions.
+#### Theory
 
-### 3.2 Advanced Search Strategies
+The algorithm maintains a tree where each node represents an LP with additional variable bounds. The fundamental idea is to partition the feasible region into smaller subregions that can be either solved directly or proven to not contain the optimal solution.
 
-The search process through the branch-and-bound tree combines multiple sophisticated strategies. Best-bound search selects nodes with the most promising bound on the objective value, effectively minimizing the worst-case number of nodes needed to prove optimality. However, this approach can consume significant memory as the tree grows. Depth-first search, while potentially exploring more nodes, requires minimal memory and often finds feasible solutions quickly.
+Consider a MIP with optimal value z*. At any point in the algorithm:
+- The best integer solution found so far (incumbent) provides a lower bound L ≤ z*
+- The best LP relaxation among open nodes provides an upper bound U ≥ z*
+- The optimality gap is (U - L)/|L|, measuring solution quality
 
-[Cutting planes](https://en.wikipedia.org/wiki/Cutting-plane_method) provide a powerful tool for strengthening the linear programming relaxations. [Gomory cuts](https://en.wikipedia.org/wiki/Cutting-plane_method#Gomory's_cut), derived from the simplex tableau, guarantee finite convergence in integer programming. [Lift-and-project cuts](https://en.wikipedia.org/wiki/Lift-and-project) exploit the structure of 0-1 variables to generate stronger inequalities. Cover inequalities identify and exploit subset relationships in knapsack-like constraints. The management of these cuts requires careful consideration—while they tighten the relaxation, too many cuts can slow down the linear programming solves.
+Three key operations guide the search:
 
-[Primal heuristics](https://en.wikipedia.org/wiki/Heuristic_(computer_science)) complement the exact nature of branch and bound by quickly finding good feasible solutions. Simple rounding schemes provide fast but potentially low-quality solutions. The [feasibility pump](https://en.wikipedia.org/wiki/Feasibility_pump) alternates between finding integer solutions and optimizing continuous relaxations. [Local search](https://en.wikipedia.org/wiki/Local_search_(optimization)) methods explore the neighborhood of known solutions for improvements. Solution polishing attempts to improve existing feasible solutions through limited tree search or cutting plane generation.
+1. **Node Selection**: Choose which subproblem to solve next
+   - Best-bound: Select node with highest upper bound (maximization)
+   - Depth-first: Select deepest node to find feasible solutions quickly
+   - Best-estimate: Combine bound and estimate of integer solution quality
+
+2. **Branching**: When a solution x* has fractional values:
+   - Most-fractional: Select variable xᵢ furthest from integrality
+   - Strong branching: Evaluate multiple candidates
+   - Create two child problems:
+     * P₁: Original problem + (xᵢ ≤ ⌊x*ᵢ⌋)
+     * P₂: Original problem + (xᵢ ≥ ⌈x*ᵢ⌉)
+
+3. **Bounding and Pruning**: Use LP relaxations to eliminate subproblems
+   - By bound: If node's LP value ≤ incumbent (maximization)
+   - By infeasibility: If node's LP is infeasible
+   - By optimality: If found integer solution at node
+
+For example, consider maximizing x₁ + 2x₂ subject to:
+```
+x₁ + x₂ ≤ 2.5
+x₁, x₂ ≥ 0
+x₁, x₂ integer
+```
+
+The root LP relaxation gives (x₁, x₂) = (0, 2.5). Since x₂ is fractional:
+1. Branch on x₂ ≤ 2 and x₂ ≥ 3
+2. Right branch (x₂ ≥ 3) is infeasible → prune
+3. Left branch (x₂ ≤ 2) gives (0.5, 2)
+4. Branch on x₁ ≤ 0 and x₁ ≥ 1
+5. Best integer solution: (0, 2) with value 4
+
+#### Implementation
+
+BoundHound implements branch and bound through careful node and tree management. Each node tracks:
+- The LP relaxation with current bounds
+- Parent and depth in search tree
+- Solution status and value
+- Branching decisions made
+- Best integer solution in subtree
+
+The main solution loop:
+1. Initialize with root node (LP relaxation)
+2. While nodes remain and not hit limit:
+   a. Select most promising node (best bound)
+   b. Solve node's LP relaxation
+   c. If integer feasible:
+      - Update incumbent if better
+      - Prune by optimality
+   d. If fractional:
+      - Select branching variable
+      - Create and queue child nodes
+   e. Update global bounds
+   f. Prune nodes that cannot improve incumbent
+3. Return best solution found with optimality certificate
+
+The solver maintains important state information:
+- Active nodes queue for processing
+- Global upper/lower bounds
+- Best integer solution (incumbent)
+- Search tree for visualization
+- Node processing history
+
+This information enables:
+1. Solution quality certificates (optimality gap)
+2. Search tree visualization
+3. Performance analysis
+4. Early termination with bounds
+
+## Example Usage
+
+For complete, step-by-step examples of solving optimization problems, check out our detailed Jupyter notebooks:
+
+1. [Facility Location](examples/facility_location.ipynb) - An in-depth look at:
+   - Mixed-integer programming
+   - Branch and bound visualization
+   - Solution strategies
+   - Performance analysis
