@@ -22,7 +22,7 @@ BoundHound is built with a minimal set of modern Python tools:
 - [NumPy](https://numpy.org/) for efficient matrix operations
 - [Ruff](https://github.com/astral-sh/ruff) for formatting and linting
 - [MyPy](http://mypy-lang.org/) for static type checking
-- [Pytest](https://docs.pytest.org/) and [Hypothesis](https://hypothesis.works/) for robust testing
+- [Pytest](https://docs.pytest.org/) for testing
 - [Graphviz](https://graphviz.org/) for branch-and-bound tree visualizations
 
 ### Quick Start
