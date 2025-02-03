@@ -29,7 +29,7 @@ BoundHound is built with a minimal set of modern Python tools:
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/boundhound.git
+git clone https://github.com/matzehuels/noodleworks.git
 cd boundhound
 
 # Create virtual environment and install dependencies
